@@ -69,7 +69,20 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(NO_DEPRECATED "")
     set(OPTIMIZE "")
     set(OS_CXX_FLAGS "-D_GLIBCXX_USE_NANOSLEEP -pthread -O -Wall -Wextra -Wformat -Wformat-security -Wconversion -fexceptions -fstrict-aliasing -fstack-protector-strong -fasynchronous-unwind-tables -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -Wformat -Wformat-security -Werror=format-security -fPIE -pie -Wl,-z,relro,-z,now")
+    set(OS_LIBS ${SystemD_LIBRARIES})
 endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+
+if (${CMAKE_SYSTEM_NAME} MATCHES "Android")
+    set(OS "ANDROID")
+    set(DL_LIBRARY "")
+    set(EXPORTSYMBOLS "")
+    set(NO_DEPRECATED "")
+    set(OPTIMIZE "")
+    set(OS_CXX_FLAGS "-DWITHOUT_SYSTEMD")
+
+    find_library(ANDROID_LOG_LIB log)
+    set(OS_LIBS ${ANDROID_LOG_LIB})
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Android")
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
     set(OS "FREEBSD")
@@ -78,6 +91,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
     set(NO_DEPRECATED "-Wno-deprecated")
     set(OPTIMIZE "")
     set(OS_CXX_FLAGS "-pthread")
+    set(OS_LIBS ${SystemD_LIBRARIES})
 endif (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 
 ################################################################################
@@ -128,7 +142,12 @@ endif ()
 find_package(Threads REQUIRED)
 
 # Boost
-find_package( Boost 1.55 COMPONENTS system thread log REQUIRED )
+if (${CMAKE_SYSTEM_NAME} MATCHES "Android")
+    ndk_find_package_boost(system thread log)
+else()
+    find_package( Boost 1.55 COMPONENTS system thread log REQUIRED )
+endif()
+
 include_directories( ${Boost_INCLUDE_DIR} )
 
 if(Boost_FOUND)
@@ -216,8 +235,12 @@ if (MSVC)
     link_directories(${Boost_LIBRARY_DIR_DEBUG})
     ADD_DEFINITIONS( -DBOOST_ALL_DYN_LINK )
 else()
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${OS} ${OS_CXX_FLAGS} -DBOOST_LOG_DYN_LINK -g ${OPTIMIZE} -std=c++11 ${NO_DEPRECATED} ${EXPORTSYMBOLS}")
-    set(USE_RT "rt")
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Android")
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${OS} ${OS_CXX_FLAGS} -g ${OPTIMIZE} -std=c++11 ${NO_DEPRECATED} ${EXPORTSYMBOLS}")
+    else()
+        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${OS} ${OS_CXX_FLAGS} -DBOOST_LOG_DYN_LINK -g ${OPTIMIZE} -std=c++11 ${NO_DEPRECATED} ${EXPORTSYMBOLS}")
+        set(USE_RT "rt")
+    endif()
 endif()
 
 ################################################################################
@@ -234,7 +257,7 @@ if (VSOMEIP_ENABLE_MULTIPLE_ROUTING_MANAGERS EQUAL 0)
         set_target_properties(${VSOMEIP_NAME}-cfg PROPERTIES COMPILE_DEFINITIONS "VSOMEIP_DLL_COMPILATION_PLUGIN")
     endif()
 
-    target_link_libraries(${VSOMEIP_NAME}-cfg ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${SystemD_LIBRARIES})
+    target_link_libraries(${VSOMEIP_NAME}-cfg ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${OS_LIBS})
 endif ()
 
 ################################################################################
@@ -270,7 +293,7 @@ target_include_directories(${VSOMEIP_NAME} INTERFACE
 # them (which shouldn't be required). ${Boost_LIBRARIES} includes absolute
 # build host paths as of writing, which also makes this important as it breaks
 # the build.
-target_link_libraries(${VSOMEIP_NAME} PRIVATE ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${DLT_LIBRARIES} ${SystemD_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${VSOMEIP_NAME} PRIVATE ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${DLT_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${OS_LIBS})
 
 ################################################################################
 # Service Discovery library
@@ -286,7 +309,7 @@ if (MSVC)
     set_target_properties(${VSOMEIP_NAME}-sd PROPERTIES COMPILE_DEFINITIONS "VSOMEIP_DLL_COMPILATION_PLUGIN")
 endif ()
 
-target_link_libraries(${VSOMEIP_NAME}-sd ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${SystemD_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${VSOMEIP_NAME}-sd ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${CMAKE_THREAD_LIBS_INIT} ${OS_LIBS})
 
 
 ################################################################################
@@ -303,7 +326,7 @@ if (MSVC)
     set_target_properties(${VSOMEIP_NAME}-e2e PROPERTIES COMPILE_DEFINITIONS "VSOMEIP_DLL_COMPILATION_PLUGIN")
 endif ()
 
-target_link_libraries(${VSOMEIP_NAME}-e2e ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${SystemD_LIBRARIES})
+target_link_libraries(${VSOMEIP_NAME}-e2e ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${OS_LIBS})
 
 ################################################################################
 # Compatibility library
@@ -334,7 +357,7 @@ target_include_directories(
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> # for generated files in build mode
     $<INSTALL_INTERFACE:include/compat> # for clients in install mode
 )
-target_link_libraries(${VSOMEIP_COMPAT_NAME} PRIVATE ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${SystemD_LIBRARIES})
+target_link_libraries(${VSOMEIP_COMPAT_NAME} PRIVATE ${VSOMEIP_NAME} ${Boost_LIBRARIES} ${USE_RT} ${DL_LIBRARY} ${OS_LIBS})
 
 endif ()
 
@@ -564,20 +587,22 @@ if(NOT WIN32)
 endif()
 
 ##############################################################################
-# build routing manager daemon (Non-Windows only)
-if (NOT MSVC)
-add_subdirectory( examples/routingmanagerd )
+if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Android")
+    # build routing manager daemon (Non-Windows only)
+    if (NOT MSVC)
+    add_subdirectory( examples/routingmanagerd )
+    endif()
+
+    # build tools
+    add_custom_target( tools )
+    add_subdirectory( tools )
+
+    # build examples
+    add_custom_target( examples )
+    add_subdirectory( examples EXCLUDE_FROM_ALL )
+    add_custom_target( hello_world )
+    add_subdirectory( examples/hello_world  EXCLUDE_FROM_ALL )
 endif()
-
-# build tools
-add_custom_target( tools )
-add_subdirectory( tools )
-
-# build examples
-add_custom_target( examples )
-add_subdirectory( examples EXCLUDE_FROM_ALL )
-add_custom_target( hello_world )
-add_subdirectory( examples/hello_world  EXCLUDE_FROM_ALL )
 
 ##############################################################################
 # Test section
