@@ -8,7 +8,7 @@
 #define LOG_TAG "vSomeIP"
 
 #ifdef ANDROID
-#include <utils/Log.h>
+#include "android/log.h"
 #endif
 
 #include <boost/log/expressions.hpp>
@@ -36,25 +36,25 @@ void android_sink_backend::consume(const logging::record_view &rec) {
 
     switch (*severity_level) {
        case logging::trivial::fatal:
-           ALOGE(message);
+           (void)__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "%s", message);
            break;
        case logging::trivial::error:
-           ALOGE(message);
+           (void)__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "%s", message);
            break;
        case logging::trivial::warning:
-           ALOGW(message);
+           (void)__android_log_print(ANDROID_LOG_WARN, LOG_TAG, "%s", message);
            break;
        case logging::trivial::info:
-           ALOGI(message);
+           (void)__android_log_print(ANDROID_LOG_INFO, LOG_TAG, "%s", message);
            break;
        case logging::trivial::debug:
-           ALOGD(message);
+           (void)__android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "%s", message);
            break;
        case logging::trivial::trace:
-           ALOGV(message);
+           (void)__android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, "%s", message);
            break;
        default:
-           ALOGI(message);
+           (void)__android_log_print(ANDROID_LOG_INFO, LOG_TAG, "%s", message);
            break;
        }
 
