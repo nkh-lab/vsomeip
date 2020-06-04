@@ -43,7 +43,7 @@ cc_defaults {
 
 cc_library_shared {
     name: "libvsomeip",
-    vendor_available: true,
+    vendor: true,
 
     srcs: libvsomeip_srcs,
 
@@ -59,7 +59,7 @@ cc_library_shared {
 
     local_include_dirs: [
         "interface",
-        "implementation/helper/1.66"
+        "implementation/helper/1.70"
     ],
 
     export_include_dirs: [
@@ -67,7 +67,6 @@ cc_library_shared {
     ],
 
     shared_libs: [
-        "libboost_log",
         "libboost_system",
         "libboost_thread",
         "libboost_filesystem",
@@ -78,7 +77,7 @@ cc_library_shared {
 
 cc_library_shared {
     name: "libvsomeip_cfg",
-    vendor_available: true,
+    vendor: true,
 
     srcs: libvsomeip_cfg_srcs,
 
@@ -90,20 +89,19 @@ cc_library_shared {
 
     local_include_dirs: [
         "interface",
-        "implementation/helper/1.66"
+        "implementation/helper/1.70"
     ],
 
     shared_libs: [
         "libvsomeip",
-        "libboost_log",
-        "libboost_filesystem",
-        "libboost_system"
+        "libboost_system",
+        "libboost_filesystem"
     ]
 }
 
 cc_library_shared {
     name: "libvsomeip_e2e",
-    vendor_available: true,
+    vendor: true,
 
     srcs: libvsomeip_e2e_srcs,
 
@@ -115,18 +113,17 @@ cc_library_shared {
 
     local_include_dirs: [
         "interface",
-        "implementation/helper/1.66"
+        "implementation/helper/1.70"
     ],
 
     shared_libs: [
-       "libvsomeip",
-       "libboost_log"
+       "libvsomeip"
     ]
 }
 
 cc_library_shared {
     name: "libvsomeip_sd",
-    vendor_available: true,
+    vendor: true,
 
     srcs: libvsomeip_sd_srcs,
 
@@ -138,12 +135,11 @@ cc_library_shared {
 
     local_include_dirs: [
         "interface",
-        "implementation/helper/1.66"
+        "implementation/helper/1.70"
     ],
 
     shared_libs: [
         "libvsomeip",
-        "libboost_log",
-        "libboost_system"
+        "libboost_log"
     ]
 }

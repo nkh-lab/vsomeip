@@ -6,10 +6,6 @@
 Build instructions for Hello World example
 ------------------------------------------
 
-1. Build whole project at first:
-________________________________
-
-cd <some_path_to_project>/vsomeip$:
 mkdir build
 cd build
 cmake ..
