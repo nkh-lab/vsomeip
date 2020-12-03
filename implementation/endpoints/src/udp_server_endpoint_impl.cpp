@@ -291,6 +291,12 @@ bool udp_server_endpoint_impl::is_joined(
 
 void udp_server_endpoint_impl::join(const std::string &_address) {
 
+    std::lock_guard<std::mutex> its_lock(multicast_mutex_);
+    join_unlocked(_address);
+}
+
+void udp_server_endpoint_impl::join_unlocked(const std::string &_address) {
+
     bool has_received(false);
 
     //
@@ -303,12 +309,26 @@ void udp_server_endpoint_impl::join(const std::string &_address) {
 
             boost::system::error_code ec;
 
+            bool is_v4(false);
+            bool is_v6(false);
+            {
+                std::lock_guard<std::mutex> its_lock(local_mutex_);
+                is_v4 = local_.address().is_v4();
+                is_v6 = local_.address().is_v6();
+            }
+
             if (multicast_recv_buffer_.empty())
                 multicast_recv_buffer_.resize(VSOMEIP_MAX_UDP_MESSAGE_SIZE, 0);
 
             if (!multicast_local_) {
-                multicast_local_ = std::unique_ptr<endpoint_type>(
-                    new endpoint_type(boost::asio::ip::address_v4::any(), local_port_));
+                if (is_v4) {
+                    multicast_local_ = std::unique_ptr<endpoint_type>(
+                            new endpoint_type(boost::asio::ip::address_v4::any(), local_port_));
+                }
+                if (is_v6) {
+                    multicast_local_ = std::unique_ptr<endpoint_type>(
+                            new endpoint_type(boost::asio::ip::address_v6::any(), local_port_));
+                }
             }
 
             if (!multicast_socket_) {
@@ -360,14 +380,6 @@ void udp_server_endpoint_impl::join(const std::string &_address) {
                 receive_multicast(multicast_id_);
             }
 
-            bool is_v4(false);
-            bool is_v6(false);
-            {
-                std::lock_guard<std::mutex> its_lock(local_mutex_);
-                is_v4 = local_.address().is_v4();
-                is_v6 = local_.address().is_v6();
-            }
-
             if (is_v4) {
                 multicast_socket_->set_option(ip::udp_ext::socket::reuse_address(true));
                 multicast_socket_->set_option(
@@ -392,7 +404,6 @@ void udp_server_endpoint_impl::join(const std::string &_address) {
         }
     };
 
-    std::lock_guard<std::mutex> its_lock(multicast_mutex_);
     if (!is_joined(_address, &has_received)) {
         join_func(_address);
     } else if (!has_received) {
@@ -550,7 +561,8 @@ void udp_server_endpoint_impl::on_message_received(
                     } else if (current_message_size > VSOMEIP_RETURN_CODE_POS &&
                         (_buffer[i + VSOMEIP_PROTOCOL_VERSION_POS] != VSOMEIP_PROTOCOL_VERSION ||
                          !utility::is_valid_message_type(tp::tp::tp_flag_unset(_buffer[i + VSOMEIP_MESSAGE_TYPE_POS])) ||
-                         !utility::is_valid_return_code(static_cast<return_code_e>(_buffer[i + VSOMEIP_RETURN_CODE_POS]))
+                         !utility::is_valid_return_code(static_cast<return_code_e>(_buffer[i + VSOMEIP_RETURN_CODE_POS])) ||
+                         (tp::tp::tp_flag_is_set(_buffer[i + VSOMEIP_MESSAGE_TYPE_POS]) && get_local_port() == configuration_->get_sd_port())
                         )) {
                         if (_buffer[i + VSOMEIP_PROTOCOL_VERSION_POS] != VSOMEIP_PROTOCOL_VERSION) {
                             VSOMEIP_ERROR << "use: Wrong protocol version: 0x"
@@ -577,6 +589,11 @@ void udp_server_endpoint_impl::on_message_received(
                             VSOMEIP_ERROR << "use: Invalid return code: 0x"
                                     << std::hex << std::setw(2) << std::setfill('0')
                                     << std::uint32_t(_buffer[i + VSOMEIP_RETURN_CODE_POS])
+                                    << " local: " << get_address_port_local()
+                                    << " remote: " << its_remote_address << ":" << std::dec << its_remote_port;
+                        } else if (tp::tp::tp_flag_is_set(_buffer[i + VSOMEIP_MESSAGE_TYPE_POS])
+                            && get_local_port() == configuration_->get_sd_port()) {
+                            VSOMEIP_WARNING << "use: Received a SomeIP/TP message on SD port:"
                                     << " local: " << get_address_port_local()
                                     << " remote: " << its_remote_address << ":" << std::dec << its_remote_port;
                         }
@@ -608,6 +625,15 @@ void udp_server_endpoint_impl::on_message_received(
                         }
                     }
                     if (tp::tp::tp_flag_is_set(_buffer[i + VSOMEIP_MESSAGE_TYPE_POS])) {
+                        const method_t its_method = VSOMEIP_BYTES_TO_WORD(_buffer[i + VSOMEIP_METHOD_POS_MIN],
+                                                                          _buffer[i + VSOMEIP_METHOD_POS_MAX]);
+                        if (!tp_segmentation_enabled(its_service, its_method)) {
+                            VSOMEIP_WARNING << "use: Received a SomeIP/TP message for service: 0x" << std::hex << its_service
+                                    << " method: 0x" << its_method << " which is not configured for TP:"
+                                    << " local: " << get_address_port_local()
+                                    << " remote: " << its_remote_address << ":" << std::dec << its_remote_port;
+                            return;
+                        }
                         const auto res = tp_reassembler_->process_tp_message(
                                 &_buffer[i], current_message_size,
                                 its_remote_address, its_remote_port);
